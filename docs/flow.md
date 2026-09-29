@@ -44,3 +44,23 @@ flowchart TB
     S6 --> S7[coordinator: advance indexed_through<br/>to highest contiguous range]
     S7 --> S8[follow head: every 12s index up to head-64]
 ```
+
+## Sanctions proximity: 3-hop BFS
+
+```mermaid
+flowchart TB
+    Q[GET /score?address=A&block=N<br/>called by every CRE node] --> L[Postgres: 2-hop neighbourhood of A<br/>block_number ≤ N, ordered by block, logIndex]
+    L --> G[In-memory graph: Out a, In a<br/>undirected edge = sent or received]
+    G --> D{A on the list?}
+    D -- yes --> S100[score 100, stop]
+    D -- no --> B[BFS hop 1, 2, 3<br/>map lookup per neighbour, stop at first hit]
+    B --> H1[hop 1 · ~20 addrs · score 80]
+    B --> H2[hop 2 · ~400 addrs · score 50]
+    B --> H3[hop 3 · ~8000 addrs · score 25]
+    H1 --> F[Finding score, evidence<br/>evidence = tx hashes on the path]
+    H2 --> F
+    H3 --> F
+    J[sanctions.json, 120 addrs<br/>OFAC sdn.xml loaded at startup] -.-> B
+```
+
+Why the list lives in the service and not behind an external API: one `/score` call can touch thousands of addresses across three hops. A per-address screening API at 30–100 requests/hour cannot serve that, and its answers could differ between CRE nodes. A static list pinned at commit time is both fast and deterministic.
