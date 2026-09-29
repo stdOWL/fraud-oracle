@@ -1,0 +1,10 @@
+.env
+*.env
+!.env.example
+workflow/.env
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+workflow/**/*.wasm
+workflow/**/*.wasm.br
+.DS_Store
