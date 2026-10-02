@@ -148,19 +148,50 @@ Unit tests use the SDK's test runtime with stubbed HTTP and EVM capabilities: th
 
 ## Running it
 
+Three processes and one contract. Each step is runnable on its own, and each one tells you something if it fails.
+
+**1. Postgres and the indexer.** The indexer needs `SEPOLIA_RPC_URL`, `TOKEN_ADDRESS` and `DATABASE_URL` in `.env`. First run creates the checkpoint at `head - 64 - 50000` and backfills; on a public RPC that is a few minutes, on your own node under a minute. Kill it with Ctrl-C at any point and restart: the log line `checkpoint resumed indexedThrough=N` is the resume path working.
+
 ```bash
-docker compose up -d
-cd service && go run ./cmd/indexer      # fills Postgres, keeps following the head
-cd service && go run ./cmd/api          # :8080
-curl "localhost:8080/score?address=0x0330070fd38ec3bb94f58fa55d40368271e9e54a"
-cd contracts && forge script script/Deploy.s.sol --rpc-url sepolia --broadcast
-cd workflow && cre workflow simulate fraud-flagger --target staging-settings \
-    --evm-tx-hash 0x<a Transfer tx> --evm-event-index 0
-cre workflow simulate fraud-flagger --target staging-settings --broadcast   # real tx
+docker compose up -d --wait
+set -a && source .env && set +a
+cd service && go run ./cmd/indexer
 ```
 
-<!-- TODO: paste simulate output (dry-run and --broadcast) and the Etherscan link to the Flagged event once run. Do not publish before this is filled. -->
+Progress is on `:9090/metrics` as `indexer_blocks_indexed_total` and `indexer_head_lag_blocks`. Lag going to zero means backfill is done and it is following the head.
 
+**2. The API.** Loads the sanctions list once, then serves. Until the indexer has a checkpoint, `/score` answers 503, which is the right answer: scoring an empty graph would return 0 for everything and look fine.
+
+```bash
+cd service && go run ./cmd/api
+curl "localhost:8080/score?address=0x0330070fd38ec3bb94f58fa55d40368271e9e54a"
+```
+
+That address is on the OFAC list, so it scores 100 with no graph at all. Call it twice: the bodies are byte-identical, which is the property the DON depends on. Then pick any address from the indexed token's recent transfers and add `&block=` to see the clamp.
+
+**3. The contract.** Deployed with the Sepolia `MockKeystoneForwarder` as constructor argument, because that is what the simulator writes through. `forge script` prints the address; it goes into `workflow/fraud-flagger/config.staging.json` as `registryAddress`.
+
+```bash
+cd contracts && forge script script/Deploy.s.sol --rpc-url sepolia --broadcast
+```
+
+**4. The workflow, dry run.** The simulator compiles the Go to WASM, fetches the log for the transaction hash you give it from your RPC, and runs the handler once. No gas: the EVM write is prepared and reported but not sent, so `txHash` comes back as `0x`. The CLI reads `workflow/.env` for `CRE_ETH_PRIVATE_KEY` (64 hex characters, no `0x`) and `SEPOLIA_RPC_URL` even for a dry run.
+
+```bash
+cd workflow && cre workflow simulate fraud-flagger --target staging-settings \
+    --evm-tx-hash 0x<a Transfer tx of the token> --evm-event-index 0
+```
+
+Pick a transaction whose sender or receiver scores at or above the threshold, or the handler legitimately does nothing and the output ends at two `scored` lines. For the demo I used a transfer touching a listed address.
+
+**5. The workflow, for real.** Same command with `--broadcast`. The simulator sends the report to the mock forwarder, which calls `onReport` on the registry, which emits `Flagged`. The log line `flag written` carries the transaction hash; `cast call <registry> "isFlagged(address)(bool)" <subject> --rpc-url sepolia` returns `true` afterwards.
+
+```bash
+cre workflow simulate fraud-flagger --target staging-settings --broadcast \
+    --evm-tx-hash 0x<same tx> --evm-event-index 0
+```
+
+<!-- TODO: paste trimmed simulate output for step 4 (scored lines + Workflow Simulation Result JSON) and step 5 (flag written line), and the Etherscan link to the Flagged event. Do not publish before this is filled. -->
 
 ## What this proves and what it does not
 
