@@ -20,27 +20,9 @@ The analysis stays off-chain, because graph traversal over fifty thousand blocks
 
 One ERC20 token (the standard interface for fungible tokens) on Sepolia, Ethereum's public test network where the coins are worthless and the rules are real. For every `Transfer`, score the sender and the receiver 0 to 100 with two rules, and if either scores at or above a threshold, record it in a `FraudRegistry` contract that any other contract can query with `isFlagged(address)`.
 
-```
- Sepolia ERC20 Transfer logs
-          │
-          ▼
- ┌─────────────────────┐        ┌──────────────────────────────┐
- │  service/ (Go)      │        │  workflow/ (CRE, Go → WASM)  │
- │  eth_getLogs indexer│        │  trigger: Transfer log       │
- │  Postgres checkpoint│◄───────│  HTTP /score (DON consensus) │
- │  rule engine        │  GET   │  if score ≥ threshold        │
- │  GET /score         │        │  EVM write report            │
- └─────────────────────┘        └──────────────┬───────────────┘
-                                               │ KeystoneForwarder
-                                               ▼
-                                 ┌──────────────────────────────┐
-                                 │ contracts/FraudRegistry.sol  │
-                                 │ onReport → store flag        │
-                                 │ isFlagged(address) view      │
-                                 └──────────────────────────────┘
-```
+![Architecture: on-chain Sepolia lane with Transfer log, KeystoneForwarder and FraudRegistry; off-chain lanes for the Go service and the CRE workflow, numbered 1 to 8](architecture.png)
 
-Step by step, per transfer:
+The same eight steps, as a table:
 
 | # | Where | Step |
 |---|---|---|

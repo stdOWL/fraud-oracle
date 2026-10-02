@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#333" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#6b4fbb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <rect width="1400" height="820" fill="#ffffff"/>
+
+  <!-- lanes -->
+  <rect x="40" y="40" width="400" height="740" rx="18" fill="#fff7f0" stroke="#e8c7a8" stroke-width="1.5"/>
+  <text x="240" y="76" text-anchor="middle" font-size="22" font-weight="bold" fill="#8a4b1f">ON-CHAIN · Sepolia</text>
+
+  <rect x="480" y="40" width="880" height="740" rx="18" fill="#f3f6fb" stroke="#b9c7df" stroke-width="1.5"/>
+  <text x="920" y="76" text-anchor="middle" font-size="22" font-weight="bold" fill="#2e4a7a">OFF-CHAIN</text>
+
+  <!-- sub-lanes off-chain -->
+  <rect x="500" y="100" width="400" height="660" rx="14" fill="#e9f5f2" stroke="#8fc9bb" stroke-width="1.2"/>
+  <text x="700" y="130" text-anchor="middle" font-size="18" font-weight="bold" fill="#1f6b58">service/ (Go, one process)</text>
+
+  <rect x="940" y="100" width="400" height="660" rx="14" fill="#efeafa" stroke="#b9a8e3" stroke-width="1.2"/>
+  <text x="1140" y="130" text-anchor="middle" font-size="18" font-weight="bold" fill="#4b2f99">workflow/ (CRE, every DON node)</text>
+
+  <!-- 1 Transfer log -->
+  <rect x="70" y="150" width="340" height="86" rx="12" fill="#ffffff" stroke="#c9733a" stroke-width="2"/>
+  <text x="240" y="184" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">1 · Transfer(from, to, value)</text>
+  <text x="240" y="212" text-anchor="middle" font-size="15" fill="#555">ERC20 log, block finalized</text>
+
+  <!-- 2 Indexer -->
+  <rect x="530" y="160" width="340" height="86" rx="12" fill="#ffffff" stroke="#2f9b84" stroke-width="2"/>
+  <text x="700" y="194" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">2 · Indexer</text>
+  <text x="700" y="222" text-anchor="middle" font-size="15" fill="#555">eth_getLogs → Postgres, checkpoint</text>
+
+  <!-- 3 Trigger -->
+  <rect x="970" y="160" width="340" height="86" rx="12" fill="#ffffff" stroke="#6b4fbb" stroke-width="2"/>
+  <text x="1140" y="194" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">3 · Log trigger fires</text>
+  <text x="1140" y="222" text-anchor="middle" font-size="15" fill="#555">same log, independently of 2</text>
+
+  <!-- 4 HTTP -->
+  <rect x="970" y="300" width="340" height="86" rx="12" fill="#ffffff" stroke="#6b4fbb" stroke-width="2"/>
+  <text x="1140" y="334" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">4 · GET /score?address&amp;block=N</text>
+  <text x="1140" y="362" text-anchor="middle" font-size="15" fill="#555">each node calls on its own</text>
+
+  <!-- 5 Rules -->
+  <rect x="530" y="300" width="340" height="86" rx="12" fill="#ffffff" stroke="#2f9b84" stroke-width="2"/>
+  <text x="700" y="334" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">5 · Rules at block N</text>
+  <text x="700" y="362" text-anchor="middle" font-size="15" fill="#555">peel chain · sanctions BFS · 0–100</text>
+
+  <!-- 6 Consensus -->
+  <rect x="970" y="440" width="340" height="86" rx="12" fill="#ffffff" stroke="#6b4fbb" stroke-width="2"/>
+  <text x="1140" y="474" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">6 · Consensus + sign</text>
+  <text x="1140" y="502" text-anchor="middle" font-size="15" fill="#555">identical score required · DON report</text>
+
+  <!-- 7 Forwarder -->
+  <rect x="70" y="440" width="340" height="86" rx="12" fill="#ffffff" stroke="#c9733a" stroke-width="2"/>
+  <text x="240" y="474" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">7 · KeystoneForwarder</text>
+  <text x="240" y="502" text-anchor="middle" font-size="15" fill="#555">verifies signatures, calls onReport</text>
+
+  <!-- 8 Registry -->
+  <rect x="70" y="600" width="340" height="86" rx="12" fill="#ffffff" stroke="#c9733a" stroke-width="2"/>
+  <text x="240" y="634" text-anchor="middle" font-size="19" font-weight="bold" fill="#222">8 · FraudRegistry</text>
+  <text x="240" y="662" text-anchor="middle" font-size="15" fill="#555">Flagged event · isFlagged(addr) = true</text>
+
+  <!-- arrows -->
+  <!-- 1 -> 2 -->
+  <line x1="410" y1="193" x2="528" y2="203" stroke="#333" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- 1 -> 3 : over top of lane 2 -->
+  <path d="M240 150 L240 110 L1140 110 L1140 158" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- 3 -> 4 -->
+  <line x1="1140" y1="246" x2="1140" y2="298" stroke="#6b4fbb" stroke-width="2" marker-end="url(#arrp)"/>
+  <!-- 4 -> 5 (request) -->
+  <line x1="970" y1="343" x2="872" y2="343" stroke="#6b4fbb" stroke-width="2" marker-end="url(#arrp)"/>
+  <!-- 5 -> 4 (response) dashed -->
+  <line x1="870" y1="369" x2="968" y2="369" stroke="#2f9b84" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr)"/>
+  <!-- 2 -> 5 (DB) -->
+  <line x1="700" y1="246" x2="700" y2="298" stroke="#2f9b84" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="712" y="276" font-size="13" fill="#1f6b58">Postgres</text>
+  <!-- 4 -> 6 -->
+  <line x1="1140" y1="386" x2="1140" y2="438" stroke="#6b4fbb" stroke-width="2" marker-end="url(#arrp)"/>
+  <!-- 6 -> 7 : across, below boxes 5 -->
+  <path d="M970 483 L240 483" fill="none" stroke="#333" stroke-width="2" stroke-dasharray="0" marker-end="url(#arr)" transform="translate(0,0)"/>
+  <!-- the line above would cross box 5? box5 spans y 300-386; y=483 is clear. Lane 2 bottom? fine -->
+  <text x="690" y="470" text-anchor="middle" font-size="13" fill="#333">signed report, one tx</text>
+  <!-- 7 -> 8 -->
+  <line x1="240" y1="526" x2="240" y2="598" stroke="#c9733a" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- gas note -->
+  <text x="240" y="740" text-anchor="middle" font-size="14" fill="#8a4b1f">gas: step 1 (user) · steps 7+8 (workflow owner)</text>
+  <!-- race note -->
+  <text x="920" y="740" text-anchor="middle" font-size="14" fill="#2e4a7a">2 and 3 see the same log; nothing orders them (see “A race in the design”)</text>
+</svg>
