@@ -8,7 +8,7 @@ A fraud score is an opinion. Chainalysis has one, TRM has one, my Go service has
 
 A contract cannot call an API, retry, or ask a second opinion. Whatever it reads from storage, it acts on. If one server wrote that storage, the protocol has outsourced its security to that server.
 
-The industry has paid for this lesson. In 2019 a bad price source pushed Synthetix's oracle to report the Korean won at 1000x, and a bot minted about a billion dollars of synthetic assets before the trades were reversed. In 2022 the LUNA feed stopped at its floor of $0.10 while the market was far lower; Venus Protocol read the floor as a price and lost $11 million. Same shape each time: one off-chain fact entered a contract with nobody checking it on the way in.
+The industry has paid for this lesson. In 2019 a bad price source pushed Synthetix's oracle to report the Korean won at 1000x, and a bot minted about a billion dollars of synthetic assets before the trades were reversed. One off-chain fact entered a contract with nobody checking it on the way in.
 
 The stakes are not small. Chainalysis's 2026 Crypto Crime Report counts $154 billion of illicit crypto volume in 2025, $104 billion of it reaching sanctioned entities, a 694% jump in one year, and stablecoins carrying 84% of the illicit flow. When the Bybit hack took $1.5 billion in February 2025, blockchain analytics firms attributed it to Lazarus within 48 hours and exchanges were freezing the proceeds within days. The data exists and the tracing works; what is missing is a way for a contract to act on it.
 
