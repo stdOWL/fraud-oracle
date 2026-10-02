@@ -1,6 +1,6 @@
 # Building an On-chain Fraud Oracle with Go and Chainlink CRE
 
-*A weekend project: off-chain fraud detection in Go, published on-chain through a decentralized oracle network. Repo: github.com/<user>/fraud-oracle. Everything described here is in the repo and runs; the limits are stated where they apply.*
+*A weekend project: off-chain fraud detection in Go, published on-chain through a decentralized oracle network (DON), a set of independently operated Chainlink nodes that fetch, agree and sign together. Code: github.com/<user>/fraud-oracle.*
 
 ## Why put this on-chain at all
 
@@ -8,13 +8,13 @@ A fraud score is an opinion. Chainalysis has one, TRM has one, my Go service has
 
 A contract cannot call an API. It cannot retry, cannot ask a second opinion, cannot tell a stale answer from a fresh one. Whatever it reads from storage, it acts on: block the withdrawal, reject the deposit, freeze the position. If that storage was written by one server, the protocol has outsourced its security to that server's uptime, honesty, and operator's private key.
 
-This is the oracle problem, and the crypto industry has already paid for the lesson several times. In 2019 Synthetix's own price feed averaged three sources; one source returned the Korean won at 1000x and the average followed it, and a trading bot extracted roughly a billion dollars of synthetic assets in minutes before the trades were reversed. In 2022 Chainlink paused the LUNA feed during the collapse; Venus Protocol kept reading the last value, never checked how old it was, and lost $11 million. In 2025 Moonwell lost money three times to a feed returning nonsense for a wrapped token that the protocol accepted without a sanity check.
+This is the oracle problem, and the crypto industry has already paid for the lesson several times. In 2019 one of the price sources behind Synthetix's own oracle reported the Korean won at about 1000x its value, the aggregate followed it, and a trading bot minted roughly a billion dollars of synthetic assets before the trades were reversed. In 2022, as LUNA collapsed, the Chainlink LUNA/USD feed stopped at its configured minimum price of about $0.10 while the market was far lower; Venus Protocol read that floor as a real price, never checked it against bounds of its own, and lost about $11 million. In 2025 Moonwell lost money repeatedly to a feed returning an absurd price for a wrapped token that the protocol accepted without a sanity check.
 
 Three failures, one shape: a single off-chain fact crossed into a contract without anyone independently checking it on the way in.
 
 An on-chain fraud flag should not be another instance of that shape. The value of putting the flag on-chain is not that it is on-chain. Storage is cheap. The value is that **the act of writing it can be made verifiable**: multiple independent parties fetch the same answer, agree, and sign, and the contract accepts only their joint signature. Then the flag is a fact other contracts can build on, not a rumour one server posted.
 
-That is what this project builds. The analysis stays off-chain, because graph traversal over fifty thousand blocks of transfers has no business inside a smart contract. The publication goes through the Chainlink Runtime Environment, because a decentralized oracle network turns my single API into something a contract can trust more than me.
+The analysis stays off-chain, because graph traversal over fifty thousand blocks of transfers has no business inside a smart contract. The publication goes through the Chainlink Runtime Environment, because a decentralized oracle network turns my single API into something a contract can trust more than me.
 
 ## What it does
 
@@ -53,13 +53,13 @@ Step by step, per transfer:
 | 7 | on-chain | `KeystoneForwarder` checks the signatures, calls `onReport` |
 | 8 | on-chain | `FraudRegistry` decodes the report, emits `Flagged` |
 
-Only 1, 7 and 8 cost gas. Step 6 is the one that matters: it is where one server's opinion becomes a verifiable fact.
+Step 1 is the user's own transaction; 7 and 8 are one transaction paid by the workflow owner's key. Step 6 is where one server's opinion becomes a verifiable fact.
 
 ## The off-chain service
 
 ### Indexer
 
-Ethereum nodes answer "which logs did this contract emit in these blocks". They do not answer "who did this address send money to". For the second question you need your own table with an index on the address columns, and the indexer's whole job is to build it.
+An Ethereum node (the chain client, not an oracle node) answers "which logs did this contract emit in these blocks". They do not answer "who did this address send money to". For the second question you need your own table with an index on the address columns, and the indexer's whole job is to build it.
 
 It pulls `Transfer` logs with `eth_getLogs` in 2,000-block ranges, eight ranges in flight, and writes them to Postgres keyed on `(tx_hash, log_index)` so a repeated insert is a no-op. Each range commits its rows together with a `range_done` marker in one transaction. A coordinator advances a single-row `checkpoint` only over contiguous completed ranges, so if range 5 finishes before range 3, the checkpoint waits at 2. Kill it, restart it, and it resumes from the checkpoint without re-fetching anything. The test for this uses a fake RPC that fails after two ranges, then confirms the second run makes exactly four more calls, not six.
 
@@ -69,11 +69,13 @@ Two choices came from running my own Ethereum and BSC nodes: index only up to `h
 
 Each rule is one Go type behind one interface, evaluated against an in-memory graph built per request from the address's two-hop neighbourhood. The graph is sorted by `(block, log_index)` before any rule touches it, so the same database state always produces the same answer. That determinism is not tidiness; it is a requirement, and the reason is in the next section.
 
-**Peel chain.** Funds move A → B → C → D, each receiver fresh (no activity before the hop), each forwarding at least 90% of what it received within 1,000 blocks. Three hops score 30, each extra hop adds 20, capped at 100. A round trip back to an earlier address is not a peel and terminates the chain. The limit is plain: the rule follows the largest outgoing transfer greedily and will miss a chain that splits.
+**Peel chain.** Funds move A → B → C → D, each receiver fresh (no activity before the hop), each forwarding at least 90% of what it received within 1,000 blocks. Three hops score 30, each extra hop adds 20, capped at 100. A round trip back to an earlier address is not a peel and terminates the chain. The term comes from UTXO-chain forensics, where each hop peels a small amount off; on an account-based chain the pattern is rarer and this rule is a first approximation. Its limit is plain: it follows the largest outgoing transfer greedily and misses a chain that splits.
 
-**Sanctions proximity.** Breadth-first search, undirected, up to three hops from the address, against the 120 Ethereum addresses on the OFAC SDN list. The address itself on the list scores 100; one hop away 80, two 50, three 25. Evidence is the transfer path to the nearest listed address.
+**Sanctions proximity.** Breadth-first search, undirected, up to three hops from the address, against the 124 EVM-format addresses on the OFAC SDN list, the US Treasury's sanctions roster. The address itself on the list scores 100; one hop away 80, two 50, three 25. Evidence is the transfer path to the nearest listed address.
 
-The list is the real one. `cmd/ofac` downloads `sdn.xml` from treasury.gov, extracts the entries tagged `Digital Currency Address - ETH`, and writes them to a JSON file the service loads at startup. I cross-checked it against a community mirror: identical, 120 of 120. What is on it: Lazarus Group wallets, Garantex, SUEX, a dozen addresses belonging to an Iranian ransomware operator, fentanyl precursor suppliers. What is not on it: the Tornado Cash contracts, delisted in March 2025, which my first hand-written fixture still had.
+Undirected proximity has a known abuse: anyone can send dust from a listed address to a victim and put them one hop away. That happened at scale after the Tornado Cash designation in 2022. A production rule weights inbound taint far below outbound; this one does not, and the registry has no revocation, so a false positive is permanent. Both are listed under "Not built" because they are the next thing to build, not because they are optional.
+
+The list is the real one. `cmd/ofac` downloads `sdn.xml` from treasury.gov, extracts every 0x address under a `Digital Currency Address` tag, and writes them to a JSON file the service loads at startup. The tag is per asset, not per chain: 120 entries say `ETH`, four more say `USDT`, `USDC`, `ARB`, `BSC` or `ETC` and are the same address format on the same or a compatible chain. My first version filtered on `ETH` alone and silently lost those four; a reviewer caught it. What is on it: Lazarus Group wallets, Garantex, SUEX, a dozen addresses belonging to an Iranian ransomware operator, fentanyl precursor suppliers. What is not on it: the Tornado Cash contracts, delisted in March 2025, which my first hand-written fixture still had.
 
 Why a static file and not Chainalysis's free screening API? Because the rule is not "is this address listed", it is "is this address near a listed one", and one scoring call can touch thousands of addresses across three hops. A per-address API at 30 to 100 requests an hour cannot serve that, and its answers can differ between the nodes that will be calling my service in parallel. A list pinned at commit time is fast and identical everywhere. It is also stale the moment OFAC updates; regenerating it is one command, and a deployed version would do that on a schedule.
 
@@ -103,7 +105,7 @@ The other direction, indexer ahead of the trigger, is harmless. Extra history be
 
 ## The contract
 
-I planned `FraudRegistry.flag(address, score, bitmask)` and expected the workflow to call it. The CRE docs corrected me within an hour. A workflow does not call your contract. The DON signs a report, delivers it to a Chainlink `KeystoneForwarder`, and the forwarder calls `onReport(bytes metadata, bytes report)` on your contract after verifying the signatures. Your contract inherits `ReceiverTemplate`, implements `_processReport(bytes)`, and decodes the payload itself.
+I planned `FraudRegistry.flag(address, score, bitmask)` and expected the workflow to call it. A workflow does not call your contract. The DON nodes each sign a report, the EVM write capability delivers it to a Chainlink `KeystoneForwarder`, and the forwarder calls `onReport(bytes metadata, bytes report)` on your contract after checking that enough of the DON's registered signers are on it. Your contract inherits `ReceiverTemplate`, implements `_processReport(bytes)`, and decodes the payload itself.
 
 So `FraudRegistry` is forty lines on top of the template: a `FlagReport` struct, a mapping, an event, `isFlagged` and `getFlag` views. `flag(FlagReport)` still exists, always reverts, and is there only because the CRE binding generator emits a `WriteReportFromFlagReport` helper when it sees a public function taking that struct. Foundry tests cover the forwarder-only access path, the always-revert, and the ERC165 interface check.
 
@@ -111,9 +113,9 @@ One trap worth knowing before you deploy: simulation and production use differen
 
 ## The CRE workflow
 
-Eighty lines of Go, compiled to WebAssembly with `//go:build wasip1`, run by every node in the DON. The SDK surface moves fast and the docs site is JavaScript-rendered, so I read the plain-text bundle at `docs.chain.link/cre/go/llms-full.txt` and wrote nothing from memory.
+Eighty lines of Go, compiled to WebAssembly with `//go:build wasip1`, run by every node in the DON. The SDK surface moves fast; the plain-text docs bundle at `docs.chain.link/cre/go/llms-full.txt` is the reliable reference.
 
-The trigger comes from generated bindings: drop the ERC20 ABI in `contracts/evm/src/abi/`, run `cre generate-bindings evm`, and you get `LogTriggerTransferLog(chainSelector, confidence, filters)` whose handler receives an already decoded `From`, `To`, `Value` plus the raw log's block number and tx hash.
+The trigger comes from generated bindings: drop the ERC20 ABI in `contracts/evm/src/abi/`, run `cre generate-bindings evm`, and you get `LogTriggerTransferLog(chainSelector, confidence, filters)`, called here with `CONFIDENCE_LEVEL_FINALIZED`, whose handler receives an already decoded `From`, `To`, `Value` plus the raw log's block number and tx hash.
 
 The HTTP call is the part worth reading:
 
@@ -125,15 +127,20 @@ type ScoreResponse struct {
     IndexedThroughBlock uint64 `json:"indexedThroughBlock" consensus_aggregation:"ignore"`
 }
 
-promise := http.SendRequest(config, runtime, client,
-    fetchScore(addr, block),
-    cre.ConsensusAggregationFromTags[*ScoreResponse](),
-)
+// one promise per party, all opened before any Await: each Await is a consensus round
+for i, a := range parties {
+    promises[i] = http.SendRequest(config, runtime, client,
+        fetchScore(a, block),
+        cre.ConsensusAggregationFromTags[*ScoreResponse](),
+    )
+}
+for i := range parties {
+    s, err := promises[i].Await()
+    ...
+}
 ```
 
-`http.SendRequest` is a map-reduce over the DON. Every node runs `fetchScore` itself, with its own HTTP client, against my service. The SDK then collects the structs and applies the tags: `identical` fields must agree across a Byzantine quorum, `ignore` fields are dropped. `Await()` returns one agreed struct or an error. For a price you would tag `median`; for a computed score there is no meaningful middle between 80 and 0, so it is `identical` or nothing.
-
-Both parties of a transfer are scored, so both promises are opened before either is awaited. Each `Await` is a consensus round, and two sequential rounds inside a five-second HTTP budget is a bad idea.
+`http.SendRequest` is a map-reduce over the DON. Every node runs `fetchScore` itself, with its own HTTP client, against my service. The SDK then collects the structs and applies the tags: `identical` fields must agree across a Byzantine quorum (with n nodes tolerating f faulty ones, n ≥ 3f+1, at least 2f+1 must match), `ignore` fields are dropped. `Await()` returns one agreed struct or an error. For a price you would tag `median`; for a computed score there is no meaningful middle between 80 and 0, so it is `identical` or nothing.
 
 The write is one call on the generated binding, `registry.WriteReportFromFlagReport(runtime, FlagReport{…}, gasConfig)`, which ABI-encodes the struct, asks the runtime for a DON-signed report, and hands it to the EVM write capability. The response carries the transaction hash.
 
@@ -154,43 +161,33 @@ cre workflow simulate fraud-flagger --target staging-settings --broadcast   # re
 
 <!-- TODO: paste simulate output (dry-run and --broadcast) and the Etherscan link to the Flagged event once run. Do not publish before this is filled. -->
 
-## What I hit
-
-- **`forge` was Atlassian's.** `which forge` returned a Node binary from nvm. Foundry lives in `~/.foundry/bin` and must come first on `PATH`.
-- **CRE needs Go 1.25.3.** My machine had 1.22. I installed 1.25.3 side by side rather than replacing it; the service still builds on 1.22.
-- **The CLI installs to `~/.cre/bin/cre`**, not `~/.cre/cre` as I had noted from an older guide. Gatekeeper wants `xattr -c` on it.
-- **`cre generate-bindings` works logged out, `cre init` and `simulate` do not.** I scaffolded the workflow directory by hand to the documented layout so the code could be written and unit-tested while waiting for the account.
-- **The write model is not "call my function".** See the contract section; this changed the contract's shape and the kickoff spec.
-- **Registering the same mock capability twice in one Go test fails** with `capability already exists`. One test runtime per test.
 
 ## What this proves and what it does not
 
 The simulator is a single node. Consensus runs structurally, a report is produced and signed, but there is no Byzantine quorum because there is only one voter. The end-to-end demo proves the plumbing: trigger, fetch, aggregate, sign, forward, store. It does not prove the security model. That needs `cre workflow deploy` to a real DON, which needs deploy access from Chainlink and a service reachable from the public internet, neither of which a weekend has.
 
-More fundamentally: the DON verifies that my service is **consistent**, not that it is **correct**. If the service returns the same wrong score to every node, the DON signs it. This is exactly the Synthetix failure in a different coat. The fix is the same as it was then: more than one independent source and an aggregation that tolerates one being wrong. With one scoring service, this oracle is more trustworthy than a bare API by precisely one property, tamper-evidence of the publication, and no more.
+More fundamentally: the DON verifies that my service is **consistent**, not that it is **correct**. If the service returns the same wrong score to every node, the DON signs it. Synthetix aggregated bad data; this design has one source and no aggregation at all, which is worse. The fix is the one the feeds use: several independent sources and a median across them. With one scoring service, this oracle is more trustworthy than a bare API by precisely one property, tamper-evidence of the publication, and no more.
 
 ## CRE is new, and that cuts both ways
 
-Price feeds have run for six years without the node software executing customer code. CRE changes that: every DON node now runs WebAssembly that someone outside Chainlink wrote. General availability was late 2025. The attack surface is new and I think it is fair to name the vectors I would ask about before trusting production money to it, not because I found a problem, but because nobody has had long enough to look.
+Price feeds ran for years without node software executing customer code. Chainlink Functions started that in 2023 with JavaScript in a sandbox; CRE goes further, running customer WebAssembly as the primary product, since late 2025. The surface is new enough that the questions below are what I would open a security review with.
 
-**Correlated failure.** Byzantine fault tolerance assumes nodes fail independently. A workflow runs on every node at the same moment, on the same WASM runtime (wazero), on the same node binary. A runtime escape would not take down one node, it would take down all of them in the same execution. The 2f+1 arithmetic does not help against a bug every voter shares. wasmtime has had two memory-safety CVEs in its JIT; wazero is pure Go with no native codegen, which narrows the class, but "narrower" is not "closed". Chainlink's answer, as far as the public docs show it, is procedural: `cre workflow deploy` needs account approval, the WASM hash is pinned in an on-chain registry, and per-workflow quotas cap memory and execution time. That stops a stranger and stops a runaway loop. It does not stop an approved customer with an unknown escape. The mitigation I would want to see is runtime diversity, two engines where a bug in one is outvoted by the other, and that is not on any roadmap I can find.
+**Correlated failure.** Byzantine fault tolerance assumes nodes fail independently. A workflow runs on every node at the same moment, on the same WASM runtime (Wasmtime, per the docs), on the same node binary. A runtime escape would not take down one node, it would take down all of them in the same execution. The 2f+1 arithmetic does not help against a bug every voter shares. Wasmtime's Cranelift compiler has had several memory-safety CVEs, one of them a sandbox escape; it is well audited, and "well audited" is not "closed". Chainlink's answer, as far as the public docs show it, is procedural: `cre workflow deploy` needs account approval, the WASM hash is pinned in an on-chain registry, and per-workflow quotas cap memory and execution time. That stops a stranger and stops a runaway loop. It does not stop an approved customer with an unknown escape. The mitigation I would want to see is runtime diversity, two engines where a bug in one is outvoted by the other, and that is not on any roadmap I can find.
 
 **Capability reach.** The sandbox has no network of its own, but the HTTP capability gives a workflow the node's network. The docs forbid redirects and cap response size and timeout. They do not say whether a workflow can address `169.254.169.254` or an operator's internal services. If it can, a workflow is a server-side request forgery primitive running on every node operator's infrastructure at once. Operators presumably sit behind an egress proxy; I could not confirm it from the documentation.
 
 **Shared node, many tenants.** Each execution gets a fresh WASM instance and a fresh linear memory, and executions are stateless, so cross-workflow leakage through memory needs the same runtime escape as above. Secrets are scoped to the workflow owner through a Vault DON. Side channels between executions on one host are theoretically possible and, to my knowledge, unstudied for this setup.
 
-**Determinism as a denial-of-service lever.** Consensus requires identical output from every node. A workflow that reads the clock or iterates a Go map in output order never agrees with itself and never writes. That is a footgun for the author, not an attack. But it also means a malicious or buggy data source can stall a workflow forever by returning slightly different bodies to different nodes. My service avoids that by pinning `block=N`; a service that does not is a workflow that never fires, with no error anyone sees.
+**Determinism as a denial-of-service lever.** Consensus requires identical output from every node. A workflow that reads the clock or iterates a Go map in output order never agrees with itself and never writes. It also means a malicious or buggy data source can stall a workflow forever by returning slightly different bodies to different nodes. My service avoids that by pinning `block=N`; a service that does not is a workflow that never fires, with no error anyone sees.
 
-**Still the oracle problem.** None of the above changes the conclusion from the previous section. The DON verifies that my service is consistent. A single-source workflow signs whatever that source says. CRE makes the publication tamper-evident; it does not make the data true.
-
-I would not call any of this a reason to avoid CRE. It is a reason to treat it like what it is: a year-old execution environment with a strong design and a short track record, where the questions above are the ones a security review would open with.
+None of this is a reason to avoid CRE. It is a year-old execution environment with a strong design and a short track record, and those are the questions to ask it.
 
 ## Not built
 
 - Deployment to a DON; demo is `simulate --broadcast` only.
 - Multiple scoring sources with median or quorum across them.
 - Reorg handling beyond "index finalized blocks only".
-- Live sanctions refresh; the list is regenerated by hand.
-- Any rule beyond the two above; no clustering, no exchange heuristics, no ML.
-- Waiting for the indexer to reach the trigger block before scoring; see "A race in the design". The service clamps to what it has and reports the height it used.
+- Live sanctions refresh; the list is regenerated by hand. Chainalysis also publishes a free on-chain `isSanctioned(address)` oracle on mainnet; it answers for one address, not a neighbourhood, so it was not a fit here.
+- Inbound/outbound taint weighting, flag expiry or revocation, exchange heuristics; no third rule.
+- Waiting for the indexer to reach the trigger block before scoring; see "A race in the design".
 - Mainnet, any other chain, a dashboard, alerts.

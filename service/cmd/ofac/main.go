@@ -3,9 +3,13 @@
 //
 //	go run ./cmd/ofac -out testdata/sanctions.json
 //
-// Source: https://www.treasury.gov/ofac/downloads/sdn.xml (~30 MB). Entries are tagged
-// "Digital Currency Address - ETH" in <idType>. The list is static at commit time on purpose:
-// scoring must be deterministic across CRE nodes, so the service never fetches at runtime.
+// Source: https://www.treasury.gov/ofac/downloads/sdn.xml (~30 MB). OFAC tags addresses by
+// asset, not by chain: "Digital Currency Address - ETH", "- USDT", "- USDC", "- ARB", "- BSC",
+// "- ETC". All of those are 20-byte EVM addresses, so every 0x-prefixed 40-hex idNumber under
+// any "Digital Currency Address" tag is kept; filtering on "- ETH" alone drops sanctioned
+// addresses that OFAC happened to list under a token name. The list is static at commit time
+// on purpose: scoring must be deterministic across CRE nodes, so the service never fetches
+// at runtime.
 package main
 
 import (
@@ -23,7 +27,7 @@ import (
 
 const sdnURL = "https://www.treasury.gov/ofac/downloads/sdn.xml"
 
-var ethID = regexp.MustCompile(`Digital Currency Address - ETH</idType>\s*<idNumber>(0x[0-9a-fA-F]{40})`)
+var evmID = regexp.MustCompile(`Digital Currency Address - [A-Z0-9]+</idType>\s*<idNumber>(0x[0-9a-fA-F]{40})`)
 
 type fixture struct {
 	Source    string   `json:"source"`
@@ -50,7 +54,7 @@ func main() {
 	}
 
 	seen := map[string]bool{}
-	for _, m := range ethID.FindAllSubmatch(body, -1) {
+	for _, m := range evmID.FindAllSubmatch(body, -1) {
 		seen[strings.ToLower(string(m[1]))] = true
 	}
 	addrs := make([]string, 0, len(seen))
@@ -59,7 +63,7 @@ func main() {
 	}
 	sort.Strings(addrs)
 	if len(addrs) == 0 {
-		fail(fmt.Errorf("no ETH addresses found; SDN XML layout may have changed"))
+		fail(fmt.Errorf("no EVM addresses found; SDN XML layout may have changed"))
 	}
 
 	f := fixture{Source: sdnURL, FetchedAt: time.Now().UTC().Format(time.RFC3339), Count: len(addrs), Addresses: addrs}
@@ -67,7 +71,7 @@ func main() {
 	if err := os.WriteFile(*out, append(buf, '\n'), 0o644); err != nil {
 		fail(err)
 	}
-	fmt.Printf("wrote %d ETH addresses to %s\n", len(addrs), *out)
+	fmt.Printf("wrote %d EVM addresses to %s\n", len(addrs), *out)
 }
 
 func fail(err error) {
