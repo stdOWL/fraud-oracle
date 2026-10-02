@@ -14,11 +14,11 @@ Three failures, one shape: a single off-chain fact crossed into a contract witho
 
 An on-chain fraud flag should not be another instance of that shape. The value of putting the flag on-chain is not that it is on-chain. Storage is cheap. The value is that **the act of writing it can be made verifiable**: multiple independent parties fetch the same answer, agree, and sign, and the contract accepts only their joint signature. Then the flag is a fact other contracts can build on, not a rumour one server posted.
 
-The analysis stays off-chain, because graph traversal over fifty thousand blocks of transfers has no business inside a smart contract. The publication goes through the Chainlink Runtime Environment, because a decentralized oracle network turns my single API into something a contract can trust more than me.
+The analysis stays off-chain, because graph traversal over fifty thousand blocks of transfers has no business inside a smart contract. The publication goes through the Chainlink Runtime Environment (CRE), because a decentralized oracle network, a DON, a fixed set of Chainlink nodes run by separate companies that each fetch the same data and sign only what they agree on, turns my single API into something a contract can trust more than me.
 
 ## What it does
 
-One ERC20 token on Sepolia. For every `Transfer`, score the sender and the receiver 0 to 100 with two rules, and if either scores at or above a threshold, record it in a `FraudRegistry` contract that any other contract can query with `isFlagged(address)`.
+One ERC20 token (the standard interface for fungible tokens) on Sepolia, Ethereum's public test network where the coins are worthless and the rules are real. For every `Transfer`, score the sender and the receiver 0 to 100 with two rules, and if either scores at or above a threshold, record it in a `FraudRegistry` contract that any other contract can query with `isFlagged(address)`.
 
 ```
  Sepolia ERC20 Transfer logs
@@ -44,7 +44,7 @@ Step by step, per transfer:
 
 | # | Where | Step |
 |---|---|---|
-| 1 | on-chain | `Transfer(from, to, value)` log emitted, block finalized |
+| 1 | on-chain | `Transfer(from, to, value)` log emitted, block finalized (old enough that the chain will not reorganize it away, about 13 minutes on Ethereum) |
 | 2 | off-chain | Indexer stores the log in Postgres |
 | 3 | off-chain | CRE log trigger starts the workflow on every DON node |
 | 4 | off-chain | Each node calls `GET /score?address=X&block=N` on its own |
@@ -53,7 +53,7 @@ Step by step, per transfer:
 | 7 | on-chain | `KeystoneForwarder` checks the signatures, calls `onReport` |
 | 8 | on-chain | `FraudRegistry` decodes the report, emits `Flagged` |
 
-Step 1 is the user's own transaction; 7 and 8 are one transaction paid by the workflow owner's key. Step 6 is where one server's opinion becomes a verifiable fact.
+Gas, the fee every transaction pays for the compute it uses, applies only to steps 1, 7 and 8. Step 1 is the user's own transaction; 7 and 8 are one transaction paid by the workflow owner's key. Step 6 is where one server's opinion becomes a verifiable fact.
 
 ## The off-chain service
 
