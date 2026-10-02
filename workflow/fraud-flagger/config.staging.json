@@ -1,7 +1,7 @@
 {
   "chainName": "ethereum-testnet-sepolia",
-  "tokenAddress": "0x0000000000000000000000000000000000000000",
-  "registryAddress": "0x0000000000000000000000000000000000000000",
+  "tokenAddress": "0x779877A7B0D9E8603169DdbD7836e478b4624789",
+  "registryAddress": "0x000000000000000000000000000000000000dEaD",
   "scoreUrl": "http://localhost:8080",
   "threshold": 50,
   "gasLimit": 500000
