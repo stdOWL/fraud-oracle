@@ -148,8 +148,6 @@ $ cast call 0x242a1Fa9â€¦6416 "getFlag(address)((uint8,uint32,uint64))" 0xA89Câ€
 (50, 1, 1790983428)
 ```
 
-Three bugs surfaced only when this ran against the real chain, none of them caught by the unit tests, all now with regression tests: the API loaded a two-hop graph while the rules look further, so a genuine three-hop chain scored 0; the peel-chain rule only followed chains *from* the subject, so a mule in the middle scored 0 even though the trigger fires with the mule as a party; and two indexer processes racing on one range left a stale marker that froze the checkpoint. Unit tests with synthetic graphs tell you the rule is consistent. Only the chain tells you the rule is asking the right question.
-
 ## What this proves and what it does not
 
 The simulator is one node. Consensus runs structurally, a report is signed, but there is no quorum because there is one voter. The demo proves the plumbing, not the security model. That needs `cre workflow deploy` to a real DON, which needs deploy access and a service on the public internet.
