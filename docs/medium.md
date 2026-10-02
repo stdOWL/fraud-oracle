@@ -22,20 +22,7 @@ One ERC20 token (the standard interface for fungible tokens) on Sepolia, Ethereu
 
 ![Architecture: on-chain Sepolia lane with Transfer log, KeystoneForwarder and FraudRegistry; off-chain lanes for the Go service and the CRE workflow, numbered 1 to 8](architecture.png)
 
-The same eight steps, as a table:
-
-| # | Where | Step |
-|---|---|---|
-| 1 | on-chain | `Transfer(from, to, value)` log emitted, block finalized (old enough that the chain will not reorganize it away, about 13 minutes on Ethereum) |
-| 2 | off-chain | Indexer stores the log in Postgres |
-| 3 | off-chain | CRE log trigger starts the workflow on every DON node |
-| 4 | off-chain | Each node calls `GET /score?address=X&block=N` on its own |
-| 5 | off-chain | Service runs the rules, returns score and evidence |
-| 6 | off-chain | Nodes compare answers; identical ones get a DON signature |
-| 7 | on-chain | `KeystoneForwarder` checks the signatures, calls `onReport` |
-| 8 | on-chain | `FraudRegistry` decodes the report, emits `Flagged` |
-
-Gas, the fee every transaction pays for the compute it uses, applies only to steps 1, 7 and 8. Step 1 is the user's own transaction; 7 and 8 are one transaction paid by the workflow owner's key. Step 6 is where one server's opinion becomes a verifiable fact.
+Block "finalized" in step 1 means old enough that the chain will not reorganize it away, about 13 minutes on Ethereum. Gas, the fee every transaction pays for the compute it uses, applies only to steps 1, 7 and 8. Step 1 is the user's own transaction; 7 and 8 are one transaction paid by the workflow owner's key. Step 6 is where one server's opinion becomes a verifiable fact.
 
 ## The off-chain service
 
