@@ -1,0 +1,7 @@
+staging-settings:
+  user-workflow:
+    workflow-name: "fraud-flagger-staging"
+  workflow-artifacts:
+    workflow-path: "."
+    config-path: "./config.staging.json"
+    secrets-path: ""

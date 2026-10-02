@@ -1,4 +1,6 @@
-# Building an On-chain Fraud Oracle with Go and Chainlink CRE — Part 1: Design and Setup
+# Building an On-chain Fraud Oracle with Go and Chainlink CRE
+
+## Part 1: Design and Setup
 
 *Weekend build, public repo, honest notes. Part 1 covers the problem, the architecture, what the Chainlink Runtime Environment (CRE) can and cannot do, and the environment setup. Code lands in Part 2.*
 
@@ -81,8 +83,8 @@ brew install go
 curl -L https://foundry.paradigm.xyz | bash
 ~/.foundry/bin/foundryup
 curl -sSL https://app.chain.link/cre/install.sh | bash
-xattr -c $HOME/.cre/cre          # macOS Gatekeeper
-echo 'export PATH="$HOME/.foundry/bin:$HOME/.cre:$PATH"' >> ~/.zshrc
+xattr -c $HOME/.cre/bin/cre      # macOS Gatekeeper
+echo 'export PATH="$HOME/.foundry/bin:$HOME/.cre/bin:$PATH"' >> ~/.zshrc
 cre version                       # note: not --version
 cre login                         # required even for local simulation
 ```
