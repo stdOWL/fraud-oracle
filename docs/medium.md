@@ -1,6 +1,6 @@
 # Building an On-chain Fraud Oracle with Go and Chainlink CRE
 
-*A weekend project: fraud detection in Go, published on-chain through a decentralized oracle network. Code: github.com/<user>/fraud-oracle.*
+*A weekend project: fraud detection in Go, published on-chain through a decentralized oracle network. Code: github.com/stdOWL/fraud-oracle.*
 
 ## Why on-chain
 
