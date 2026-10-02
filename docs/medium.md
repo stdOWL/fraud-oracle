@@ -53,7 +53,34 @@ Undirected proximity has a known abuse: send dust from a listed address and the 
 
 I planned `FraudRegistry.flag(address, score, bitmask)`. A CRE workflow does not call your contract. DON nodes sign a report, the EVM write capability delivers it to a Chainlink `KeystoneForwarder`, and the forwarder calls `onReport(bytes metadata, bytes report)` after checking enough registered signers are on it. Your contract inherits `ReceiverTemplate`, implements `_processReport(bytes)`, decodes the payload.
 
-`FraudRegistry` is forty lines on top of that: a `FlagReport` struct, a mapping, an event, two views. `flag(FlagReport)` still exists and always reverts; it is there so the binding generator emits `WriteReportFromFlagReport`. One trap: `cre workflow simulate` writes through a `MockKeystoneForwarder` that passes no metadata, so deploy with the mock address for the demo and switch to the real forwarder for production.
+`FraudRegistry` is forty lines on top of that:
+
+```solidity
+contract FraudRegistry is ReceiverTemplate {
+  struct FlagReport { address subject; uint8 score; uint32 ruleBitmask; }
+  struct Flag       { uint8 score; uint32 ruleBitmask; uint64 flaggedAt; }
+
+  mapping(address => Flag) private s_flags;
+  event Flagged(address indexed subject, uint8 score, uint32 ruleBitmask);
+
+  constructor(address forwarder) ReceiverTemplate(forwarder) {}
+
+  // Exists so `cre generate-bindings` emits WriteReportFromFlagReport. Never callable.
+  function flag(FlagReport calldata) external pure { revert DirectFlagNotAllowed(); }
+
+  function isFlagged(address a) external view returns (bool) { return s_flags[a].flaggedAt != 0; }
+
+  // Called by ReceiverTemplate.onReport after the forwarder check.
+  function _processReport(bytes calldata report) internal override {
+    FlagReport memory r = abi.decode(report, (FlagReport));
+    if (r.score > 100) revert InvalidScore(r.score);
+    s_flags[r.subject] = Flag(r.score, r.ruleBitmask, uint64(block.timestamp));
+    emit Flagged(r.subject, r.score, r.ruleBitmask);
+  }
+}
+```
+
+The forwarder check lives in `ReceiverTemplate.onReport`: `if (msg.sender != s_forwarderAddress) revert InvalidSender(...)`. Foundry tests cover that path, the always-revert on `flag`, and a score above 100. One trap: `cre workflow simulate` writes through a `MockKeystoneForwarder` that passes no metadata, so deploy with the mock address for the demo and switch to the real forwarder for production.
 
 ## The CRE workflow
 
