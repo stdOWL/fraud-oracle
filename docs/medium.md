@@ -169,6 +169,22 @@ The simulator is a single node. Consensus runs structurally, a report is produce
 
 More fundamentally: the DON verifies that my service is **consistent**, not that it is **correct**. If the service returns the same wrong score to every node, the DON signs it. This is exactly the Synthetix failure in a different coat. The fix is the same as it was then: more than one independent source and an aggregation that tolerates one being wrong. With one scoring service, this oracle is more trustworthy than a bare API by precisely one property, tamper-evidence of the publication, and no more.
 
+## CRE is new, and that cuts both ways
+
+Price feeds have run for six years without the node software executing customer code. CRE changes that: every DON node now runs WebAssembly that someone outside Chainlink wrote. General availability was late 2025. The attack surface is new and I think it is fair to name the vectors I would ask about before trusting production money to it, not because I found a problem, but because nobody has had long enough to look.
+
+**Correlated failure.** Byzantine fault tolerance assumes nodes fail independently. A workflow runs on every node at the same moment, on the same WASM runtime (wazero), on the same node binary. A runtime escape would not take down one node, it would take down all of them in the same execution. The 2f+1 arithmetic does not help against a bug every voter shares. wasmtime has had two memory-safety CVEs in its JIT; wazero is pure Go with no native codegen, which narrows the class, but "narrower" is not "closed". Chainlink's answer, as far as the public docs show it, is procedural: `cre workflow deploy` needs account approval, the WASM hash is pinned in an on-chain registry, and per-workflow quotas cap memory and execution time. That stops a stranger and stops a runaway loop. It does not stop an approved customer with an unknown escape. The mitigation I would want to see is runtime diversity, two engines where a bug in one is outvoted by the other, and that is not on any roadmap I can find.
+
+**Capability reach.** The sandbox has no network of its own, but the HTTP capability gives a workflow the node's network. The docs forbid redirects and cap response size and timeout. They do not say whether a workflow can address `169.254.169.254` or an operator's internal services. If it can, a workflow is a server-side request forgery primitive running on every node operator's infrastructure at once. Operators presumably sit behind an egress proxy; I could not confirm it from the documentation.
+
+**Shared node, many tenants.** Each execution gets a fresh WASM instance and a fresh linear memory, and executions are stateless, so cross-workflow leakage through memory needs the same runtime escape as above. Secrets are scoped to the workflow owner through a Vault DON. Side channels between executions on one host are theoretically possible and, to my knowledge, unstudied for this setup.
+
+**Determinism as a denial-of-service lever.** Consensus requires identical output from every node. A workflow that reads the clock or iterates a Go map in output order never agrees with itself and never writes. That is a footgun for the author, not an attack. But it also means a malicious or buggy data source can stall a workflow forever by returning slightly different bodies to different nodes. My service avoids that by pinning `block=N`; a service that does not is a workflow that never fires, with no error anyone sees.
+
+**Still the oracle problem.** None of the above changes the conclusion from the previous section. The DON verifies that my service is consistent. A single-source workflow signs whatever that source says. CRE makes the publication tamper-evident; it does not make the data true.
+
+I would not call any of this a reason to avoid CRE. It is a reason to treat it like what it is: a year-old execution environment with a strong design and a short track record, where the questions above are the ones a security review would open with.
+
 ## Not built
 
 - Deployment to a DON; demo is `simulate --broadcast` only.
