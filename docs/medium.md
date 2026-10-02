@@ -30,9 +30,9 @@ Only steps 1, 7 and 8 pay gas. Step 6 is where one server's opinion becomes a ve
 
 **Indexer.** An Ethereum node answers "which logs did this contract emit in these blocks", not "who did this address pay". So the indexer pulls `Transfer` logs with `eth_getLogs` in 2,000-block ranges, eight in flight, into Postgres keyed on `(tx_hash, log_index)`. Each range commits with a `range_done` marker; a checkpoint advances only over contiguous ranges. Kill it, restart it, it resumes without re-fetching. Two habits from running my own Ethereum and BSC nodes: index only up to `head - 64` so reorgs never reach the table, and split a range in half when the provider says "too many results", because every provider has a different limit.
 
-**Rules.** Each rule is one Go type behind one interface, run against an in-memory graph of the address's two-hop neighbourhood, sorted by `(block, log_index)` so the same data always gives the same answer.
+**Rules.** Each rule is one Go type behind one interface, run against an in-memory graph of the address's neighbourhood, expanded seven hops out (sanctions needs three, a peel chain keeps scoring to hop seven), sorted by `(block, log_index)` so the same data always gives the same answer.
 
-- *Peel chain.* A → B → C → D, each receiver fresh, each forwarding at least 90% within 1,000 blocks. Three hops score 30, each extra hop +20, cap 100. Greedy along the largest transfer; misses a chain that splits.
+- *Peel chain.* A → B → C → D, each receiver fresh, each forwarding at least 90% within 1,000 blocks. Three hops score 30, each extra hop +20, cap 100. The subject is usually a mule mid-chain, not the origin, so the rule walks back to the origin first and every address on the chain gets the same score and evidence. Greedy along the largest transfer; misses a chain that splits.
 - *Sanctions proximity.* Breadth-first search, undirected, three hops, against the 124 EVM addresses on the OFAC SDN list. On the list: 100. One hop: 80. Two: 50. Three: 25.
 
 The list is real. `cmd/ofac` pulls `sdn.xml` from treasury.gov and keeps every `0x` address under any `Digital Currency Address` tag. OFAC tags per asset, not per chain: 120 say `ETH`, four say `USDT`, `USDC`, `ARB`, `BSC` or `ETC`. My first version filtered on `ETH` and silently lost four; a reviewer caught it. Why a file and not Chainalysis's free API? One score call touches thousands of addresses across three hops, and a per-address API cannot serve that. A list pinned at commit time is fast and identical on every node.
@@ -117,11 +117,38 @@ All promises open before any `Await`, because each `Await` is a consensus round.
 
 1. **Postgres and indexer.** `docker compose up -d`, then `go run ./cmd/indexer`. First run backfills 50K blocks; minutes on a public RPC, under one on your own node. Ctrl-C and restart: the log line `checkpoint resumed` is the resume path working.
 2. **API.** `go run ./cmd/api`, then `curl "localhost:8080/score?address=0x0330070fd38ec3bb94f58fa55d40368271e9e54a"`. That address is on the OFAC list; it scores 100. Call twice: byte-identical bodies, the property the DON depends on.
-3. **Contract.** `forge script script/Deploy.s.sol --rpc-url sepolia --broadcast` with the mock forwarder as constructor argument. Address goes into `config.staging.json`.
-4. **Dry run.** `cre workflow simulate fraud-flagger --target staging-settings --evm-tx-hash 0x… --evm-event-index 0`. Compiles to WASM, fetches the log, runs the handler once, reports the write without sending it.
-5. **For real.** Same with `--broadcast`. Forwarder calls `onReport`, `Flagged` fires, `cast call <registry> "isFlagged(address)(bool)" <subject>` returns `true`.
+3. **Contract.** `forge script script/Deploy.s.sol --rpc-url sepolia --broadcast` with the mock forwarder as constructor argument. Deployed at [`0x242a1Fa9…6416`](https://sepolia.etherscan.io/address/0x242a1fa96000a298d1c37fcd1617e523bcf16416), source verified on Sourcify.
+4. **Something to flag.** Sepolia LINK has no peel chains, so `scripts/peel-chain-demo.sh` makes one: four burner wallets, A → B → C → D → E, each hop 95% of the previous. Thirteen minutes later the hops are finalized and indexed, and the service scores every wallet on the chain 50.
+5. **Dry run.** Trigger on the hop-4 transaction. The simulator compiles to WASM, fetches the log, runs the handler once, reports the write without sending it:
 
-<!-- TODO: paste trimmed output of 4 and 5, plus the Etherscan link to the Flagged event. Do not publish before this is filled. -->
+```
+[USER LOG] msg=scored address=0xA89C2581e7b579FF14D67b193F69869ddf637ffc score=50 ruleBitmask=1 block=11832051
+[USER LOG] msg="flag written" address=0xA89C2581e7b579FF14D67b193F69869ddf637ffc txHash=0x0000…0000
+[USER LOG] msg=scored address=0xD613621b4579eF9E991d36522470360Cc7A2c297 score=0 ruleBitmask=0 block=11832051
+✓ Workflow Simulation Result:
+{ "Block": 11832051, "Verdicts": [ { "Address": "0xA89C…7ffc", "Flagged": true, "Score": 50, "TxHash": "0x0000…0000" },
+                                   { "Address": "0xD613…c297", "Flagged": false, "Score": 0 } ] }
+```
+
+   D, the sender, is a mule three hops downstream of the origin and scores 50. E only received and scores 0.
+
+6. **For real.** Same command with `--broadcast`:
+
+```
+[USER LOG] msg=scored address=0xA89C2581e7b579FF14D67b193F69869ddf637ffc score=50 ruleBitmask=1 block=11832051
+[USER LOG] msg="flag written" address=0xA89C2581e7b579FF14D67b193F69869ddf637ffc txHash=0x1e55b220a1164f6c690a0d6c01abbcbef8966ca50d5a358d9b5be554ab918819
+```
+
+   [The transaction](https://sepolia.etherscan.io/tx/0x1e55b220a1164f6c690a0d6c01abbcbef8966ca50d5a358d9b5be554ab918819) goes to the forwarder, not to my contract; the forwarder calls `onReport`, and `FraudRegistry` emits `Flagged`. Afterwards:
+
+```
+$ cast call 0x242a1Fa9…6416 "isFlagged(address)(bool)" 0xA89C…7ffc --rpc-url sepolia
+true
+$ cast call 0x242a1Fa9…6416 "getFlag(address)((uint8,uint32,uint64))" 0xA89C…7ffc --rpc-url sepolia
+(50, 1, 1790983428)
+```
+
+Three bugs surfaced only when this ran against the real chain, none of them caught by the unit tests, all now with regression tests: the API loaded a two-hop graph while the rules look further, so a genuine three-hop chain scored 0; the peel-chain rule only followed chains *from* the subject, so a mule in the middle scored 0 even though the trigger fires with the mule as a party; and two indexer processes racing on one range left a stale marker that froze the checkpoint. Unit tests with synthetic graphs tell you the rule is consistent. Only the chain tells you the rule is asking the right question.
 
 ## What this proves and what it does not
 
