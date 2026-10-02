@@ -175,9 +175,16 @@ func (s *Store) AdvanceCheckpoint(ctx context.Context) (uint64, error) {
 	}
 	rows.Close()
 
+	// Markers at or below the checkpoint are stale (a range committed twice by concurrent
+	// workers or a restart). Consume them without moving the checkpoint, otherwise the
+	// contiguity check below would wait forever for a range that already landed.
 	var consumed []uint64
 	for _, r := range done {
-		if r.from != through+1 {
+		if r.to <= through {
+			consumed = append(consumed, r.from)
+			continue
+		}
+		if r.from > through+1 {
 			break
 		}
 		through = r.to

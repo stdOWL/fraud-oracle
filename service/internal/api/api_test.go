@@ -86,6 +86,24 @@ func TestScoreEndpoint(t *testing.T) {
 	if code, _, _ = get("/score?address=nope"); code != 400 {
 		t.Fatalf("bad address: code=%d", code)
 	}
+	// Three-hop peel chain A->B->C->D must be fully loaded: the last hop is 3 hops from A.
+	P, Q, R2, S2 := common.BigToAddress(big.NewInt(11)), common.BigToAddress(big.NewInt(12)), common.BigToAddress(big.NewInt(13)), common.BigToAddress(big.NewInt(14))
+	peel := []store.Transfer{
+		{BlockNumber: 30, TxHash: common.BigToHash(big.NewInt(31)), From: P, To: Q, Value: big.NewInt(100)},
+		{BlockNumber: 31, TxHash: common.BigToHash(big.NewInt(32)), From: Q, To: R2, Value: big.NewInt(95)},
+		{BlockNumber: 32, TxHash: common.BigToHash(big.NewInt(33)), From: R2, To: S2, Value: big.NewInt(90)},
+	}
+	if err := st.CommitRange(ctx, 101, 200, peel); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AdvanceCheckpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	code, resp, body = get("/score?address=" + P.Hex())
+	if code != 200 || resp.Score != 30 || resp.RuleBitmask != 1 {
+		t.Fatalf("peel chain origin: code=%d body=%s", code, body)
+	}
+
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "score_latency_seconds_bucket") {

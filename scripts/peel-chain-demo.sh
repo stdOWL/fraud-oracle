@@ -19,9 +19,9 @@ GAS_ETH=${GAS_ETH:-0.004}                # ETH sent to each hop for its one tran
 WALLETS=scripts/.peel-wallets
 if [ ! -f "$WALLETS" ]; then
   for n in B C D; do
-    out=$($CAST wallet new)
-    addr=$(echo "$out" | awk '/Address/ {print $2}')
-    key=$(echo "$out" | awk '/Private key/ {print $3}')
+    out=$($CAST wallet new --json)
+    addr=$(echo "$out" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"][0]["address"])')
+    key=$(echo "$out" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"][0]["private_key"])')
     echo "$n $addr $key" >> "$WALLETS"
   done
   chmod 600 "$WALLETS"
@@ -33,8 +33,8 @@ D_ADDR=$(awk '$1=="D"{print $2}' $WALLETS)
 echo "A=$A B=$B_ADDR C=$C_ADDR D=$D_ADDR"
 echo "A balances: $($CAST balance $A --rpc-url $RPC --ether) ETH, $($CAST call $LINK 'balanceOf(address)(uint256)' $A --rpc-url $RPC) LINK-wei"
 
-send_eth() { $CAST send --private-key "$1" --rpc-url $RPC --value "${2}ether" "$3" --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["transactionHash"])'; }
-send_link() { $CAST send --private-key "$1" --rpc-url $RPC $LINK 'transfer(address,uint256)' "$2" "$3" --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["transactionHash"])'; }
+send_eth() { $CAST send --private-key "$1" --rpc-url $RPC --value "${2}ether" "$3" --json | python3 -c 'import json,sys;d=json.load(sys.stdin);print((d.get("data") or d)["transactionHash"])'; }
+send_link() { $CAST send --private-key "$1" --rpc-url $RPC $LINK 'transfer(address,uint256)' "$2" "$3" --json | python3 -c 'import json,sys;d=json.load(sys.stdin);print((d.get("data") or d)["transactionHash"])'; }
 pct95() { python3 -c "print($1*95//100)"; }
 
 echo "gas: A -> B, C"

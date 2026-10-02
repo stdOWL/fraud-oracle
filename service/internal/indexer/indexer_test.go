@@ -170,3 +170,36 @@ var errFatal = &fatalErr{}
 type fatalErr struct{}
 
 func (*fatalErr) Error() string { return "fake rpc: permanent failure" }
+
+// A range_done row at or below the checkpoint (left by a concurrent duplicate commit) must
+// not block the checkpoint from advancing past it.
+func TestStaleRangeMarkerDoesNotBlockAdvance(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	if err := st.InitCheckpoint(ctx, store.Checkpoint{Token: common.HexToAddress("0x1"), ChainID: 1, StartBlock: 100}); err != nil {
+		t.Fatal(err)
+	}
+	// Normal commit and advance: checkpoint -> 199.
+	if err := st.CommitRange(ctx, 100, 199, nil); err != nil {
+		t.Fatal(err)
+	}
+	if through, err := st.AdvanceCheckpoint(ctx); err != nil || through != 199 {
+		t.Fatalf("through=%d err=%v", through, err)
+	}
+	// Duplicate commit of an already-consumed range re-inserts a stale marker.
+	if err := st.CommitRange(ctx, 100, 199, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Next range lands; advance must skip the stale marker and reach 299.
+	if err := st.CommitRange(ctx, 200, 299, nil); err != nil {
+		t.Fatal(err)
+	}
+	through, err := st.AdvanceCheckpoint(ctx)
+	if err != nil || through != 299 {
+		t.Fatalf("through=%d err=%v, want 299", through, err)
+	}
+	pending, _ := st.PendingRanges(ctx)
+	if len(pending) != 0 {
+		t.Fatalf("stale markers left: %v", pending)
+	}
+}

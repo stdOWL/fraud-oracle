@@ -22,7 +22,7 @@ import (
 	"fraud-oracle/service/internal/store"
 )
 
-// neighbourhoodRows caps how many transfers one scoring call loads (2-hop expansion).
+// neighbourhoodRows caps how many transfers one expansion step loads.
 // Above this, hot addresses (exchanges) would blow the CRE 5s HTTP budget.
 const neighbourhoodRows = 5000
 
@@ -113,23 +113,35 @@ func (s *Server) handleScore(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// Score loads the 2-hop neighbourhood of addr at or below atBlock and runs the rules.
+// graphDepth is how far the loader expands from the subject. Both rules look up to three
+// transfers away (peel chain MinHops=3, sanctions MaxHops=3), so the graph must contain
+// transfers three hops out or the rules cannot see what they are scoring.
+const graphDepth = 3
+
+// Score loads the subject's neighbourhood to graphDepth at or below atBlock and runs the rules.
 // Same (addr, atBlock, DB contents) always gives the same response.
 func (s *Server) Score(ctx context.Context, addr common.Address, atBlock uint64) (ScoreResponse, error) {
-	hop1, err := s.st.TransfersTouching(ctx, []common.Address{addr}, atBlock, neighbourhoodRows)
-	if err != nil {
-		return ScoreResponse{}, err
-	}
-	neighbours := graph.New(hop1).Neighbors(addr)
-	hop2 := hop1
-	if len(neighbours) > 0 {
-		more, err := s.st.TransfersTouching(ctx, neighbours, atBlock, neighbourhoodRows)
+	var all []store.Transfer
+	seen := map[common.Address]bool{addr: true}
+	frontier := []common.Address{addr}
+	for depth := 0; depth < graphDepth && len(frontier) > 0; depth++ {
+		ts, err := s.st.TransfersTouching(ctx, frontier, atBlock, neighbourhoodRows)
 		if err != nil {
 			return ScoreResponse{}, err
 		}
-		hop2 = append(hop2, more...)
+		all = append(all, ts...)
+		var next []common.Address
+		for _, t := range ts {
+			for _, a := range [...]common.Address{t.From, t.To} {
+				if !seen[a] {
+					seen[a] = true
+					next = append(next, a)
+				}
+			}
+		}
+		frontier = next
 	}
-	g := graph.New(hop2)
+	g := graph.New(all)
 	res := score.Evaluate(g, addr, s.rules)
 	if res.Rules == nil {
 		res.Rules = []score.RuleResult{}
