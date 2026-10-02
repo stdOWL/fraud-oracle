@@ -32,10 +32,13 @@ func (PeelChain) Name() string { return "peel_chain" }
 func (PeelChain) Bit() uint32  { return 1 << 0 }
 
 func (p PeelChain) Evaluate(g *graph.Graph, addr common.Address) Finding {
+	// The subject may be a mule in the middle of a chain, not its origin. Walk back along
+	// qualifying hops to the origin first; the chain is then scored from there, so every
+	// address on it gets the same score and the same evidence.
+	origin := p.origin(g, addr)
 	var best []common.Hash
-	// The subject may be the origin of the chain: try each outgoing transfer as hop 1.
-	for _, first := range g.Out[addr] {
-		chain := p.follow(g, first, map[common.Address]bool{addr: true})
+	for _, first := range g.Out[origin] {
+		chain := p.follow(g, first, map[common.Address]bool{origin: true})
 		if len(chain) > len(best) {
 			best = chain
 		}
@@ -45,6 +48,34 @@ func (p PeelChain) Evaluate(g *graph.Graph, addr common.Address) Finding {
 		return Finding{}
 	}
 	return Finding{Score: min(100, 30+20*(hops-p.MinHops)), Evidence: sortedHashes(best)}
+}
+
+// origin walks upstream from addr while addr (then its payer, and so on) looks like a
+// peel hop: fresh at the incoming transfer and forwarding most of it. Returns the first
+// address that is not itself a hop. visited guards cycles.
+func (p PeelChain) origin(g *graph.Graph, addr common.Address) common.Address {
+	visited := map[common.Address]bool{addr: true}
+	cur := addr
+	for {
+		var in store.Transfer
+		found := false
+		for _, t := range g.In[cur] {
+			if g.FirstSeen[cur] != t.BlockNumber || visited[t.From] {
+				continue
+			}
+			if _, ok := p.forwardHop(g, cur, t); !ok {
+				continue
+			}
+			if !found || t.Value.Cmp(in.Value) > 0 {
+				in, found = t, true
+			}
+		}
+		if !found {
+			return cur
+		}
+		visited[in.From] = true
+		cur = in.From
+	}
 }
 
 // follow extends the chain from transfer t as long as the receiver keeps peeling.

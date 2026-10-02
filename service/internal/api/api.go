@@ -113,10 +113,10 @@ func (s *Server) handleScore(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// graphDepth is how far the loader expands from the subject. Both rules look up to three
-// transfers away (peel chain MinHops=3, sanctions MaxHops=3), so the graph must contain
-// transfers three hops out or the rules cannot see what they are scoring.
-const graphDepth = 3
+// graphDepth is how far the loader expands from the subject. Sanctions looks 3 hops out;
+// peel chain keeps scoring until hop 7 (30 + 20 per extra hop, capped at 100), so the graph
+// must reach that far or long chains are undercounted. neighbourhoodRows bounds each step.
+const graphDepth = 7
 
 // Score loads the subject's neighbourhood to graphDepth at or below atBlock and runs the rules.
 // Same (addr, atBlock, DB contents) always gives the same response.

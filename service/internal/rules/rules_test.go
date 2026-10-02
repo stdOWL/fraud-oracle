@@ -85,6 +85,29 @@ func TestPeelChain(t *testing.T) {
 	}
 }
 
+func TestPeelChainMuleScoresLikeOrigin(t *testing.T) {
+	A, B, C, D, E := addr(1), addr(2), addr(3), addr(4), addr(5)
+	ts := []store.Transfer{
+		tx(1, 100, A, B, 100), tx(2, 101, B, C, 95), tx(3, 102, C, D, 90), tx(4, 103, D, E, 86),
+	}
+	g := graph.New(ts)
+	rule := DefaultPeelChain()
+	want := rule.Evaluate(g, A)
+	if want.Score != 50 || len(want.Evidence) != 4 {
+		t.Fatalf("origin: %+v", want)
+	}
+	for _, mule := range []common.Address{B, C, D} {
+		f := rule.Evaluate(g, mule)
+		if f.Score != want.Score || len(f.Evidence) != len(want.Evidence) {
+			t.Fatalf("mule %s: got score=%d evidence=%d, want %d/%d", mule.Hex(), f.Score, len(f.Evidence), want.Score, len(want.Evidence))
+		}
+	}
+	// E only received; it forwarded nothing, so it is not a hop and the chain from E is empty.
+	if f := rule.Evaluate(g, E); f.Score != 0 {
+		t.Fatalf("sink E scored %d", f.Score)
+	}
+}
+
 func TestSanctions(t *testing.T) {
 	A, B, C, D, S := addr(1), addr(2), addr(3), addr(4), addr(666)
 	rule := NewSanctions([]common.Address{S}, 3)
