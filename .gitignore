@@ -9,3 +9,4 @@ workflow/**/*.wasm
 workflow/**/*.wasm.br
 .DS_Store
 scripts/.peel-wallets
+NOTES.md
