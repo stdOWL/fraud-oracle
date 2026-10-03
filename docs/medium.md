@@ -198,7 +198,7 @@ Not a reason to avoid CRE. A year-old environment with a strong design and a sho
 - **[Dusting](https://www.chainalysis.com/blog/tornado-cash-sanctions-challenges/).** Sending tiny amounts from a tainted address to a victim so proximity-based tools flag the victim.
 - **[WASM / Wasmtime](https://wasmtime.dev/).** WebAssembly, the sandboxed binary format workflows compile to; Wasmtime is the runtime CRE nodes execute it in.
 - **[SSRF](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery).** Server-side request forgery: tricking a server into making HTTP requests to places it should not reach, such as its own internal network.
-- **[Determinism](https://docs.chain.link/cre/guides/workflow/avoiding-non-determinism).** Same input, same output, on every node. Required for consensus; the reason the service scores at a pinned block height.
+- **[Determinism](https://docs.chain.link/cre/concepts/non-determinism).** Same input, same output, on every node. Required for consensus; the reason the service scores at a pinned block height.
 
 ---
 
