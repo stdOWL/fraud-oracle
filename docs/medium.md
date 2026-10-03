@@ -175,30 +175,30 @@ Not a reason to avoid CRE. A year-old environment with a strong design and a sho
 
 ## Glossary
 
-- **Oracle.** Anything that puts an off-chain fact (a price, a score, a weather reading) where a smart contract can read it. The hard part is not the write; it is proving the fact was not made up.
-- **DON, decentralized oracle network.** A fixed set of Chainlink nodes run by separate operators. Each fetches the same data; only an answer a quorum agrees on gets signed.
-- **CRE, Chainlink Runtime Environment.** Chainlink's platform for running your own code (Go or TypeScript, compiled to WebAssembly) on a DON, with triggers, HTTP and chain read/write as built-in capabilities.
-- **Workflow.** The program you deploy to CRE: a trigger plus a handler. Compiled to WASM, run by every node on every trigger, stateless between runs.
-- **Capability.** A service the DON offers to a workflow: EVM log trigger, HTTP request, EVM write. Each call goes through consensus.
-- **Consensus / aggregation.** The step where node results are compared. `identical` requires a quorum to match exactly; `median` takes the middle value; `ignore` drops the field.
-- **Byzantine fault tolerance, 2f+1.** With n nodes, up to f can be faulty or malicious as long as n ≥ 3f+1; a result needs 2f+1 matching votes.
-- **Report.** The signed payload a DON produces after consensus. The forwarder verifies its signatures on-chain.
-- **KeystoneForwarder.** The Chainlink contract that receives a report, checks the signatures, and calls `onReport` on your contract. Simulation uses a `MockKeystoneForwarder` that skips the signature check.
-- **ReceiverTemplate / onReport.** The base contract and entry point a CRE-writable contract must implement. Your logic lives in `_processReport(bytes)`.
-- **ERC20 / Transfer.** The standard fungible-token interface; `Transfer(from, to, value)` is the event every token emits on a move.
-- **Sepolia.** Ethereum's public test network. Same rules as mainnet, worthless coins, free from faucets.
-- **Finalized block.** A block the chain will not reorganize away; about 13 minutes on Ethereum. Both the indexer and the CRE trigger wait for it.
-- **Gas.** The fee a transaction pays for the compute it uses. Only on-chain steps cost it.
-- **Indexer.** The Go process that copies `Transfer` logs from the chain into Postgres so they can be queried by address. An Ethereum node cannot answer "who did this address pay".
-- **Checkpoint.** The indexer's high-water mark; restart resumes from it instead of re-scanning.
-- **Peel chain.** Funds hopping through fresh wallets, each forwarding most of the balance and leaving a small remainder. A money-laundering pattern.
-- **Sanctions proximity.** How many transfer hops separate an address from one on a sanctions list.
-- **OFAC / SDN list.** The US Treasury's sanctions office and its Specially Designated Nationals list, which includes crypto addresses.
-- **Mule.** A wallet in the middle of a laundering chain: receives, forwards, keeps little.
-- **Dusting.** Sending tiny amounts from a tainted address to a victim so proximity-based tools flag the victim.
-- **WASM / Wasmtime.** WebAssembly, the sandboxed binary format workflows compile to; Wasmtime is the runtime CRE nodes execute it in.
-- **SSRF.** Server-side request forgery: tricking a server into making HTTP requests to places it should not reach, such as its own internal network.
-- **Determinism.** Same input, same output, on every node. Required for consensus; the reason the service scores at a pinned block height.
+- **[Oracle](https://chain.link/education/blockchain-oracles).** Anything that puts an off-chain fact (a price, a score, a weather reading) where a smart contract can read it. The hard part is not the write; it is proving the fact was not made up.
+- **[DON, decentralized oracle network](https://docs.chain.link/cre/key-terms).** A fixed set of Chainlink nodes run by separate operators. Each fetches the same data; only an answer a quorum agrees on gets signed.
+- **[CRE, Chainlink Runtime Environment](https://docs.chain.link/cre).** Chainlink's platform for running your own code (Go or TypeScript, compiled to WebAssembly) on a DON, with triggers, HTTP and chain read/write as built-in capabilities.
+- **[Workflow](https://docs.chain.link/cre/key-terms).** The program you deploy to CRE: a trigger plus a handler. Compiled to WASM, run by every node on every trigger, stateless between runs.
+- **[Capability](https://docs.chain.link/cre/capabilities).** A service the DON offers to a workflow: EVM log trigger, HTTP request, EVM write. Each call goes through consensus.
+- **[Consensus / aggregation](https://docs.chain.link/cre/reference/sdk/consensus).** The step where node results are compared. `identical` requires a quorum to match exactly; `median` takes the middle value; `ignore` drops the field.
+- **[Byzantine fault tolerance, 2f+1](https://docs.chain.link/cre/concepts/consensus-computing).** With n nodes, up to f can be faulty or malicious as long as n ≥ 3f+1; a result needs 2f+1 matching votes.
+- **[Report](https://docs.chain.link/cre/guides/workflow/using-evm-client/onchain-write/overview).** The signed payload a DON produces after consensus. The forwarder verifies its signatures on-chain.
+- **[KeystoneForwarder](https://docs.chain.link/cre/guides/workflow/using-evm-client/forwarder-directory).** The Chainlink contract that receives a report, checks the signatures, and calls `onReport` on your contract. Simulation uses a `MockKeystoneForwarder` that skips the signature check.
+- **[ReceiverTemplate / onReport](https://docs.chain.link/cre/guides/workflow/using-evm-client/onchain-write/building-consumer-contracts).** The base contract and entry point a CRE-writable contract must implement. Your logic lives in `_processReport(bytes)`.
+- **[ERC20 / Transfer](https://eips.ethereum.org/EIPS/eip-20).** The standard fungible-token interface; `Transfer(from, to, value)` is the event every token emits on a move.
+- **[Sepolia](https://ethereum.org/en/developers/docs/networks/#sepolia).** Ethereum's public test network. Same rules as mainnet, worthless coins, free from faucets.
+- **[Finalized block](https://ethereum.org/en/roadmap/single-slot-finality/).** A block the chain will not reorganize away; about 13 minutes on Ethereum. Both the indexer and the CRE trigger wait for it.
+- **[Gas](https://ethereum.org/en/developers/docs/gas/).** The fee a transaction pays for the compute it uses. Only on-chain steps cost it.
+- **[Indexer](https://github.com/stdOWL/fraud-oracle/tree/main/service/internal/indexer).** The Go process that copies `Transfer` logs from the chain into Postgres so they can be queried by address. An Ethereum node cannot answer "who did this address pay".
+- **[Checkpoint](https://github.com/stdOWL/fraud-oracle/blob/main/service/internal/store/store.go).** The indexer's high-water mark; restart resumes from it instead of re-scanning.
+- **[Peel chain](https://github.com/stdOWL/fraud-oracle/blob/main/service/internal/rules/peelchain.go).** Funds hopping through fresh wallets, each forwarding most of the balance and leaving a small remainder. A money-laundering pattern.
+- **[Sanctions proximity](https://github.com/stdOWL/fraud-oracle/blob/main/service/internal/rules/sanctions.go).** How many transfer hops separate an address from one on a sanctions list.
+- **[OFAC / SDN list](https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists).** The US Treasury's sanctions office and its Specially Designated Nationals list, which includes crypto addresses.
+- **[Mule](https://www.chainalysis.com/blog/money-laundering-cryptocurrency/).** A wallet in the middle of a laundering chain: receives, forwards, keeps little.
+- **[Dusting](https://www.chainalysis.com/blog/tornado-cash-sanctions-challenges/).** Sending tiny amounts from a tainted address to a victim so proximity-based tools flag the victim.
+- **[WASM / Wasmtime](https://wasmtime.dev/).** WebAssembly, the sandboxed binary format workflows compile to; Wasmtime is the runtime CRE nodes execute it in.
+- **[SSRF](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery).** Server-side request forgery: tricking a server into making HTTP requests to places it should not reach, such as its own internal network.
+- **[Determinism](https://docs.chain.link/cre/guides/workflow/avoiding-non-determinism).** Same input, same output, on every node. Required for consensus; the reason the service scores at a pinned block height.
 
 ---
 
