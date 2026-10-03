@@ -4,7 +4,7 @@ Off-chain fraud detection in Go, published on-chain through the Chainlink Runtim
 
 A smart contract cannot ask an API whether an address is suspicious. This repo scores addresses off-chain from indexed ERC20 transfers, then lets a decentralized oracle network (DON) fetch that score, agree on it, sign it, and write it to a `FraudRegistry` contract that any other contract can query with `isFlagged(address)`. Demonstrated end to end on Sepolia with `cre workflow simulate --broadcast`.
 
-Write-up: [docs/medium.md](docs/medium.md).
+Write-up: [on Medium](https://medium.com/@osmanozturkkk/building-an-on-chain-fraud-oracle-with-go-and-chainlink-cre-5da2f31c2d67) (source in [docs/medium.md](docs/medium.md), glossary at the end).
 
 ## Architecture
 
